@@ -1,18 +1,41 @@
 steps:
-  # Grant read/write permissions to the workspace.
-  - name: "bash"
-    args: ["chmod", "777", "/workspace"]
-  # Recursively read a directory of kubernetes YAML configs from the workspace and output them as one list into config-source.yaml.
-  - name: "gcr.io/config-management-release/read-yaml"
+  # Build Docker image for pos
+  - name: "gcr.io/cloud-builders/docker"
     args:
       [
-        "--input",
-        "/dev/null",
-        "-d",
-        "source_dir=/workspace/ci-pipeline-unstructured/config-root",
-        "--output",
-        "/workspace/config-source.yaml",
+        "build",
+        "-t",
+        "gcr.io/${_PROJECT_ID}/posimage:latest",
+        "-f",
+        "deployment/Dockerfile-pos",
+        ".",
       ]
-  # Validate input configs against any OPA ConstraintTemplates and Constraints it finds in its input.
-  - name: "gcr.io/config-management-release/policy-controller-validate"
-    args: ["--input", "/workspace/config-source.yaml"]
+
+  # Build Docker image for database
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      [
+        "build",
+        "-t",
+        "gcr.io/${_PROJECT_ID}/databaseimage:latest",
+        "-f",
+        "deployment/Dockerfile-database",
+        ".",
+      ]
+
+  # Push Docker images to container registry
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["push", "gcr.io/$PROJECT_ID/posimage:latest"]
+  - name: "gcr.io/cloud-builders/docker"
+    args: ["push", "gcr.io/${_PROJECT_ID}/databaseimage:latest"]
+
+  # Apply Kubernetes deployment file to POS3 cluster
+  - name: "gcr.io/cloud-builders/kubectl"
+    args: ["apply", "-f", "deployment.yml"]
+    env:
+      - "CLOUDSDK_COMPUTE_ZONE=asia-south1-a"
+      - "CLOUDSDK_CONTAINER_CLUSTER=pos3"
+      - "CLOUDSDK_CORE_PROJECT=${_PROJECT_ID}"
+
+substitutions:
+  _PROJECT_ID: app-mod-gebu-trainees
